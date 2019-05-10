@@ -3,33 +3,33 @@
 
 varying vec4 position;
 
-uniform vec3 dataStep;
 uniform sampler3D dataFieldTex;
 uniform sampler2D norTex;
 uniform sampler2D colTex;
 
-const int numLights = 1;
-const int iterations = 64;
-const float epsilon = 0.05;
-const float k = 2;
+uniform mat4 normToPos;
+uniform mat4 posToNorm;
 
-const float minDataStep() {
-    return min(dataStep.x, min(dataStep.y, dataStep.z));
-}
+uniform vec3 vertDecals[8];
+
+const int numLights = 2;
+const int iterations = 32;
+const float epsilon = 0.05;
 
 void main(void)
 {
-    // Displacement for swizzles.
-    vec4 displace = vec4(dataStep, 0.0);
+    vec4 norm = posToNorm * position;
+    norm /= norm.w;
+
 
     // Get normal vector.
     vec3 normal = -normalize(vec3(
-    texture3D(dataFieldTex, (position.xyz + displace.xww + 1.0f) / 2.0f).r
-        - texture3D(dataFieldTex, (position.xyz - displace.xww + 1.0f) / 2.0f).r,
-    texture3D(dataFieldTex, (position.xyz + displace.wyw + 1.0f) / 2.0f).r
-        - texture3D(dataFieldTex, (position.xyz - displace.wyw + 1.0f) / 2.0f).r,
-    texture3D(dataFieldTex, (position.xyz + displace.wwz + 1.0f) / 2.0f).r
-        - texture3D(dataFieldTex, (position.xyz - displace.wwz + 1.0f) / 2.0f).r));
+    texture3D(dataFieldTex, norm.xyz + vertDecals[1]).r
+        - texture3D(dataFieldTex, norm.xyz - vertDecals[1]).r,
+    texture3D(dataFieldTex, norm.xyz + vertDecals[3]).r
+        - texture3D(dataFieldTex, norm.xyz - vertDecals[3]).r,
+    texture3D(dataFieldTex, norm.xyz + vertDecals[4]).r
+        - texture3D(dataFieldTex, norm.xyz - vertDecals[4]).r));
 
     // Blend value.
     vec3 blend = abs(normal * normal * normal * normal);
@@ -85,16 +85,27 @@ void main(void)
         vec3 E = normalize(-position.xyz);
         vec3 R = normalize(-reflect(L.xyz, normalVec));
 
-        float o = 1.0;
-        for (int j = 0; j < iterations; j++) {
-            float d = texture3D(dataFieldTex, ((position.xyz + L.xyz * minDataStep() * float(k + j))  + 1.0f) / 2.0f).r;
-            o *= clamp((1.0 - d) / k, 0.0, 1.0);
-            if(o <= epsilon)
-                break;
+        // Illumination via facting the light source
+        float viaFace =  max(dot(normalVec, L), 0.0);
+
+        // Illumination via occlusion.
+        float viaOcc = 1.0;
+
+        // Occlusion not needed if already in shadow.
+        if(viaFace > 0.0) {
+            for (int j = 1; j < iterations; j++) {
+                // Get density at current ray location.
+                float d = texture3DProj(dataFieldTex, posToNorm * vec4(position.xyz + L *  vertDecals[1].x * float(j), 1.0f)).r;
+
+                // Apply occlusion factor over density.
+                viaOcc *= clamp((1.0 - d / gl_LightSource[i].spotExponent), 0.0, 1.0);
+                if(viaOcc <= epsilon)
+                    break;
+            }
         }
 
         vec4 Iamb = gl_LightSource[i].ambient;
-        vec4 Idiff = clamp(gl_LightSource[i].diffuse * max(dot(normalVec, L.xyz) * o, 0.0), 0.0, 1.0);
+        vec4 Idiff = clamp(gl_LightSource[i].diffuse * viaFace * viaOcc, 0.0, 1.0);
         //vec4 Ispec = clamp(gl_LightSource[i].specular * pow(max(dot(R, E), 0.0), 0.3 * gl_FrontMaterial.shininess), 0.0, 1.0);
 
         finalColor += (Iamb + Idiff) * colorVec;// + Ispec;

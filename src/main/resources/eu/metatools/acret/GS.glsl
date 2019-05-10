@@ -11,6 +11,10 @@
 #extension GL_EXT_geometry_shader4 : enable
 #extension GL_EXT_gpu_shader4 : enable
 
+
+uniform mat4 normToPos;
+uniform mat4 posToNorm;
+
 //Volume data field texture
 uniform sampler3D dataFieldTex;
 //Edge table texture
@@ -20,6 +24,7 @@ uniform isampler2D triTableTex;
 
 //Global iso level // TODO: Constant
 uniform float isolevel;
+
 //Marching cubes vertices decal
 uniform vec3 vertDecals[8];
 
@@ -33,7 +38,7 @@ const vec3 cubePos(in int i){
 
 //Get vertex i value within current marching cube
 const float cubeVal(in int i){
-    return texture3D(dataFieldTex, (cubePos(i)+1.0)/2.0).r;
+    return texture3D(dataFieldTex, cubePos(i)).r;
 }
 
 //Get edge table value
@@ -75,29 +80,29 @@ void main(void) {
 
     //Find the vertices where the surface intersects the cube
     if ((edgeTableValue(cubeindex) & 1)!=0)
-    vertlist[0] = vertexInterp(cubePos(0), cubeVal(0), cubePos(1), cubeVal(1));
+        vertlist[0] = vertexInterp(cubePos(0), cubeVal(0), cubePos(1), cubeVal(1));
     if ((edgeTableValue(cubeindex) & 2)!=0)
-    vertlist[1] = vertexInterp(cubePos(1), cubeVal(1), cubePos(2), cubeVal(2));
+        vertlist[1] = vertexInterp(cubePos(1), cubeVal(1), cubePos(2), cubeVal(2));
     if ((edgeTableValue(cubeindex) & 4)!=0)
-    vertlist[2] = vertexInterp(cubePos(2), cubeVal(2), cubePos(3), cubeVal(3));
+        vertlist[2] = vertexInterp(cubePos(2), cubeVal(2), cubePos(3), cubeVal(3));
     if ((edgeTableValue(cubeindex) & 8)!=0)
-    vertlist[3] = vertexInterp(cubePos(3), cubeVal(3), cubePos(0), cubeVal(0));
+        vertlist[3] = vertexInterp(cubePos(3), cubeVal(3), cubePos(0), cubeVal(0));
     if ((edgeTableValue(cubeindex) & 16)!=0)
-    vertlist[4] = vertexInterp(cubePos(4), cubeVal(4), cubePos(5), cubeVal(5));
+        vertlist[4] = vertexInterp(cubePos(4), cubeVal(4), cubePos(5), cubeVal(5));
     if ((edgeTableValue(cubeindex) & 32)!=0)
-    vertlist[5] = vertexInterp(cubePos(5), cubeVal(5), cubePos(6), cubeVal(6));
+        vertlist[5] = vertexInterp(cubePos(5), cubeVal(5), cubePos(6), cubeVal(6));
     if ((edgeTableValue(cubeindex) & 64)!=0)
-    vertlist[6] = vertexInterp(cubePos(6), cubeVal(6), cubePos(7), cubeVal(7));
+        vertlist[6] = vertexInterp(cubePos(6), cubeVal(6), cubePos(7), cubeVal(7));
     if ((edgeTableValue(cubeindex) & 128)!=0)
-    vertlist[7] = vertexInterp(cubePos(7), cubeVal(7), cubePos(4), cubeVal(4));
+        vertlist[7] = vertexInterp(cubePos(7), cubeVal(7), cubePos(4), cubeVal(4));
     if ((edgeTableValue(cubeindex) & 256)!=0)
-    vertlist[8] = vertexInterp(cubePos(0), cubeVal(0), cubePos(4), cubeVal(4));
+        vertlist[8] = vertexInterp(cubePos(0), cubeVal(0), cubePos(4), cubeVal(4));
     if ((edgeTableValue(cubeindex) & 512)!=0)
-    vertlist[9] = vertexInterp(cubePos(1), cubeVal(1), cubePos(5), cubeVal(5));
+        vertlist[9] = vertexInterp(cubePos(1), cubeVal(1), cubePos(5), cubeVal(5));
     if ((edgeTableValue(cubeindex) & 1024)!=0)
-    vertlist[10] = vertexInterp(cubePos(2), cubeVal(2), cubePos(6), cubeVal(6));
+        vertlist[10] = vertexInterp(cubePos(2), cubeVal(2), cubePos(6), cubeVal(6));
     if ((edgeTableValue(cubeindex) & 2048)!=0)
-    vertlist[11] = vertexInterp(cubePos(3), cubeVal(3), cubePos(7), cubeVal(7));
+        vertlist[11] = vertexInterp(cubePos(3), cubeVal(3), cubePos(7), cubeVal(7));
 
 
     // Create the triangle
@@ -111,7 +116,7 @@ void main(void) {
             break;
 
         // Fill varying and position, then emit vertex.
-        position= vec4(vertlist[tri], 1);
+        position = normToPos * vec4(vertlist[tri], 1);
         gl_Position = gl_ModelViewProjectionMatrix * position;
         EmitVertex();
 

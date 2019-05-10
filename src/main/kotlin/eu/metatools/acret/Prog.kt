@@ -1,13 +1,12 @@
 package eu.metatools.acret
 
+import org.joml.Matrix4f
 import org.joml.Vector2f
 import org.joml.Vector3f
 import org.joml.Vector3i
 import org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE
 import org.lwjgl.glfw.GLFW.GLFW_RELEASE
 import org.lwjgl.opengl.EXTGeometryShader4.*
-import org.lwjgl.opengl.EXTTextureFilterAnisotropic.GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
-import org.lwjgl.opengl.EXTTextureFilterAnisotropic.GL_TEXTURE_MAX_ANISOTROPY_EXT
 import org.lwjgl.opengl.GL11.GL_AMBIENT
 import org.lwjgl.opengl.GL11.GL_DIFFUSE
 import org.lwjgl.opengl.GL11.GL_LIGHT0
@@ -21,15 +20,11 @@ import org.lwjgl.opengl.GL30.*
 import org.lwjgl.opengl.GL32.GL_GEOMETRY_SHADER
 import org.lwjgl.stb.STBImage
 import org.lwjgl.stb.STBPerlin
-import java.lang.Math.round
-import java.lang.Math.tan
+import kotlin.math.round
+import kotlin.math.tan
 import kotlin.system.measureNanoTime
 
 
-val dataSize = Vector3i(128, 128, 128)
-val cubeSize = Vector3f(32F, 32F, 32F)
-val res = 1.00f
-val cubeStep = Vector3f(res, res, res) / cubeSize
 val isolevel = 0.5f
 var viewOrient = Vector2f(2.5f, 0f)
 
@@ -38,6 +33,10 @@ val norName = "tex/Ground_Dirt_005_NORM.jpg"
 
 
 class Prog : Window("Program") {
+    companion object {
+        val res = Vector3i(128, 128, 128)
+    }
+
     override fun onKey(key: Int, scancode: Int, action: Int, mods: Int) {
         if (action == GLFW_RELEASE && key == GLFW_KEY_ESCAPE)
             shouldClose = true
@@ -110,7 +109,8 @@ class Prog : Window("Program") {
         // Initialize the data field and set texture.
         initDataField()
 
-        initNM()
+        initNor()
+
         initCol()
 
         // Initialize assignments to samplers..
@@ -126,13 +126,13 @@ class Prog : Window("Program") {
         glUseProgram(0)
     }
 
-    private fun initNM() {
+    private fun initNor() {
         norTex = intArrayOf(0).also(::glGenTextures).single()
 
         glActiveTexture(GL_TEXTURE3)
         glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, norTex)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
@@ -150,6 +150,7 @@ class Prog : Window("Program") {
                         GL_TEXTURE_2D, 0, format,
                         x.single(), y.single(), 0, format, GL_UNSIGNED_BYTE, bb
                     )
+                    glGenerateMipmap(GL_TEXTURE_2D)
                     STBImage.stbi_image_free(bb)
                 }
             }
@@ -163,7 +164,7 @@ class Prog : Window("Program") {
         glActiveTexture(GL_TEXTURE4)
         glEnable(GL_TEXTURE_2D)
         glBindTexture(GL_TEXTURE_2D, colTex)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
@@ -181,6 +182,7 @@ class Prog : Window("Program") {
                         GL_TEXTURE_2D, 0, format,
                         x.single(), y.single(), 0, format, GL_UNSIGNED_BYTE, bb
                     )
+                    glGenerateMipmap(GL_TEXTURE_2D)
                     STBImage.stbi_image_free(bb)
                 }
             }
@@ -193,20 +195,20 @@ class Prog : Window("Program") {
     private fun initVBO() {
         val gridData = mutableListOf<Float>()
 
-        var k = -1f
+        var k = 0f
         while (k < 1.0f) {
-            var j = -1f
+            var j = 0f
             while (j < 1.0f) {
-                var i = -1f
+                var i = 0f
                 while (i < 1.0f) {
                     gridData += i
                     gridData += j
                     gridData += k
-                    i += cubeStep.x
+                    i += 1f / res.x
                 }
-                j += cubeStep.y
+                j += 1f / res.y
             }
-            k += cubeStep.z
+            k += 1f / res.z
         }
 
         gridDataBuffId = intArrayOf(0).also(::glGenBuffers).single()
@@ -222,14 +224,26 @@ class Prog : Window("Program") {
      */
     private fun initLighting() {
 
-        val lightAmbient = floatArrayOf(0.88f, 0.65f, 0.55f, 1.0f)
-        val lightDiffuse = floatArrayOf(0.91f, 0.89f, 0.76f, 1.0f)
+        val lightAmbient = floatArrayOf(0.55f, 0.65f, 0.88f, 1.0f)
+        val lightDiffuse = floatArrayOf(0.91f, 0.81f, 0.66f, 1.0f)
         val lightPosition = floatArrayOf(5.0f, 5.0f, 5.0f, 1.0f)
         glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient)
         glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse)
         glLightfv(GL_LIGHT0, GL_SPECULAR, lightDiffuse)
         glLightfv(GL_LIGHT0, GL_POSITION, lightPosition)
+        glLighti(GL_LIGHT0, GL_SPOT_EXPONENT, 1)
         glEnable(GL_LIGHT0)
+
+
+        // val lightAmbient2 = floatArrayOf(0.0f, 0.0f, 0.0f, 1.0f)
+        // val lightDiffuse2 = floatArrayOf(0.91f, 0.89f, 1.00f, 1.0f)
+        // val lightPosition2 = floatArrayOf(-5.0f, 5.0f, 5.0f, 1.0f)
+        // glLightfv(GL_LIGHT1, GL_AMBIENT, lightAmbient2)
+        // glLightfv(GL_LIGHT1, GL_DIFFUSE, lightDiffuse2)
+        // glLightfv(GL_LIGHT1, GL_SPECULAR, lightDiffuse2)
+        // glLightfv(GL_LIGHT1, GL_POSITION, lightPosition2)
+        // glLighti(GL_LIGHT1, GL_SPOT_EXPONENT, 1)
+        // glEnable(GL_LIGHT1)
     }
 
     /**
@@ -284,44 +298,34 @@ class Prog : Window("Program") {
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE)
 
 
-        val dataField = FloatArray(dataSize.x * dataSize.y * dataSize.z)
-        val center = Vector3f(dataSize.x / 2f, dataSize.y / 2f, dataSize.z / 2f)
+        val dataField = FloatArray(res.x * res.y * res.z)
+        val center = Vector3f(res.x / 2f, res.y / 2f, res.z / 2f)
 
         fun p(a: Float, p: Float, x: Float, y: Float, z: Float) =
-            a * STBPerlin.stb_perlin_noise3(x / p, y / p, z / p, 0, 0, 0)
+            a * STBPerlin.stb_perlin_noise3(x / p, y / p, z / p, res.x, res.y, res.z)
 
         val f = { x: Float, y: Float, z: Float ->
             var r = 0f
             r += -y
-            var p = Vector3f(x, y, z)
-            var d = Vector3f(
-                p(16f, 250f, x, y, z),
-                p(16f, 250f, y, z, x),
-                p(16f, 250f, z, x, y)
-            )
+            r += p(50.0f, 55f, x, y, z)
+            r += p(20.0f, 45f, x, y, z)
+            r += p(10.0f, 35f, x, y, z)
+            r += p(22.0f, 36f, x, y, z)
+            r += p(14.0f, 21f, x, y, z)
+            r += p(5.0f, 17f, x, y, z)
+            r += p(4.0f, 8f, x, y, z)
+            r += p(3.0f, 7f, x, y, z)
+            r += p(2.5f, 7.2f, x, y, z)
+            r += p(2.9f, 7.7f, x, y, z)
 
-            r += p(50.0f, 55f, p.x, p.y, p.z)
-            p.add(d)
-            r += p(20.0f, 45f, p.x, p.y, p.z)
-            p.add(d)
-            r += p(10.0f, 35f, p.x, p.y, p.z)
-            p.add(d)
-            r += p(22.0f, 36f, p.x, p.y, p.z)
-            p.add(d)
-            r += p(14.0f, 21f, p.x, p.y, p.z)
-            p.add(d)
-            r += p(5.0f, 17f, p.x, p.y, p.z)
-            p.add(d)
-            r += p(4.0f, 8f, p.x, p.y, p.z)
-            p.add(d)
-            r += p(3.0f, 7f, p.x, p.y, p.z)
+            //r = min(r, hypot(z, y) - 16f)
             r
         }
 
-        for (k in 0 until dataSize.z)
-            for (j in 0 until dataSize.y)
-                for (i in 0 until dataSize.x) {
-                    dataField[i + j * dataSize.x + k * dataSize.x * dataSize.y] =
+        for (k in 0 until res.z)
+            for (j in 0 until res.y)
+                for (i in 0 until res.x) {
+                    dataField[i + j * res.x + k * res.x * res.y] =
                         f(i.toFloat() - center.x, j.toFloat() - center.y, k.toFloat() - center.z)
                 }
 
@@ -329,10 +333,10 @@ class Prog : Window("Program") {
         glTexImage3D(
             GL_TEXTURE_3D,
             0,
-            GL_R32F,
-            dataSize.x,
-            dataSize.y,
-            dataSize.z,
+            GL_R16F,
+            res.x,
+            res.y,
+            res.z,
             0,
             GL_RED,
             GL_FLOAT,
@@ -357,20 +361,20 @@ class Prog : Window("Program") {
         // Assign data step size.
         glUniform3f(
             glGetUniformLocation(program, "dataStep"),
-            1.0f / dataSize.x,
-            1.0f / dataSize.y,
-            1.0f / dataSize.z
+            1.0f / res.x,
+            1.0f / res.y,
+            1.0f / res.z
         )
 
         // Assign displacements.
         glUniform3f(glGetUniformLocation(program, "vertDecals[0]"), 0.0f, 0.0f, 0.0f)
-        glUniform3f(glGetUniformLocation(program, "vertDecals[1]"), cubeStep.x, 0.0f, 0.0f)
-        glUniform3f(glGetUniformLocation(program, "vertDecals[2]"), cubeStep.x, cubeStep.y, 0.0f)
-        glUniform3f(glGetUniformLocation(program, "vertDecals[3]"), 0.0f, cubeStep.y, 0.0f)
-        glUniform3f(glGetUniformLocation(program, "vertDecals[4]"), 0.0f, 0.0f, cubeStep.z)
-        glUniform3f(glGetUniformLocation(program, "vertDecals[5]"), cubeStep.x, 0.0f, cubeStep.z)
-        glUniform3f(glGetUniformLocation(program, "vertDecals[6]"), cubeStep.x, cubeStep.y, cubeStep.z)
-        glUniform3f(glGetUniformLocation(program, "vertDecals[7]"), 0.0f, cubeStep.y, cubeStep.z)
+        glUniform3f(glGetUniformLocation(program, "vertDecals[1]"), 1f / res.x, 0.0f, 0.0f)
+        glUniform3f(glGetUniformLocation(program, "vertDecals[2]"), 1f / res.x, 1f / res.y, 0.0f)
+        glUniform3f(glGetUniformLocation(program, "vertDecals[3]"), 0.0f, 1f / res.y, 0.0f)
+        glUniform3f(glGetUniformLocation(program, "vertDecals[4]"), 0.0f, 0.0f, 1f / res.z)
+        glUniform3f(glGetUniformLocation(program, "vertDecals[5]"), 1f / res.x, 0.0f, 1f / res.z)
+        glUniform3f(glGetUniformLocation(program, "vertDecals[6]"), 1f / res.x, 1f / res.y, 1f / res.z)
+        glUniform3f(glGetUniformLocation(program, "vertDecals[7]"), 0.0f, 1f / res.y, 1f / res.z)
     }
 
     private fun initGL() {
@@ -395,6 +399,15 @@ class Prog : Window("Program") {
 
     val times = arrayListOf<Long>()
     val timesSize = 60
+
+    fun placeInstance(pos: Vector3f, size: Vector3f) {
+
+        val normToPos = Matrix4f().translate(pos).scale(size)
+        val posToNorm = normToPos.invert(Matrix4f())
+        glUniformMatrix4fv(glGetUniformLocation(program, "normToPos"), false, normToPos.get(FloatArray(16)))
+        glUniformMatrix4fv(glGetUniformLocation(program, "posToNorm"), false, posToNorm.get(FloatArray(16)))
+    }
+
     override fun onDraw() {
         measureNanoTime {
             viewOrient.y += 0.01f
@@ -425,40 +438,27 @@ class Prog : Window("Program") {
             glColor4f(1f, 1f, 1f, 1f)
             //Shader program binding
             glUseProgram(program)
+
             //Current isolevel uniform parameter setting
             glUniform1f(glGetUniformLocation(program, "isolevel"), isolevel)
 
             glPolygonMode(GL_FRONT, GL_FILL)
 
             //Initial geometries are points. One point is generated per marching cube.
-            // TODO: OCT-TREE or VBOs.
+            // TODO: OCT-TREE.
 
             glBindBuffer(GL_ARRAY_BUFFER, gridDataBuffId)
 
             glEnableClientState(GL_VERTEX_ARRAY)
             glVertexPointer(3, GL_FLOAT, 0, 0L)
+
+            // Place instance before drawing
+            placeInstance(Vector3f(-2f, -2f, -2f), Vector3f(4f, 4f, 4f))
             glDrawArrays(GL_POINTS, 0, gridDataBuffSize)
+
             glDisableClientState(GL_VERTEX_ARRAY)
 
             glBindBuffer(GL_ARRAY_BUFFER, 0)
-
-            // glBegin(GL_POINTS)
-            // var k = -1f
-            // while (k < 1.0f) {
-            //     var j = -1f
-            //     while (j < 1.0f) {
-            //         var i = -1f
-            //         while (i < 1.0f) {
-            //             glVertex3f(i, j, k)
-            //             i += cubeStep.x
-            //         }
-            //         j += cubeStep.y
-            //     }
-            //     k += cubeStep.z
-            // }
-//
-            // glEnd()
-
 
             //Disable shader program
             glUseProgram(0)
